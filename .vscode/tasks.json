@@ -5,11 +5,29 @@
     "tasks": [
         {
             "label": "VICE",
-            "type": "shell",
-            "command": "x64sc monster.prg",
+            "type": "process",
+            "osx": {
+                "command": "x64sc",
+                "args": [
+                    "monster.prg"
+                ]
+            },
+            "windows": {
+                "command": "x64sc",
+                "args": [
+                    "monster.prg"
+                ]
+            },
+            "linux": {
+                "command": "x64sc",
+                "args": [
+                    "monster.prg"
+                ]
+            },
             "dependsOrder": "sequence",
             "dependsOn": [
-                "XCBASIC EXOMIZER"
+                "XCBASIC",
+                "EXOMIZER"
             ],
             "group": {
                 "kind": "build",
