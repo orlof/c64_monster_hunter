@@ -4,12 +4,12 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "Exomizer",
+            "label": "VICE",
             "type": "shell",
-            "command": "util/exomizer.sh",
+            "command": "x64sc monster.prg",
             "dependsOrder": "sequence",
             "dependsOn": [
-                "XC_BASIC"
+                "XCBASIC EXOMIZER"
             ],
             "group": {
                 "kind": "build",
@@ -20,7 +20,23 @@
             }
         },
         {
-            "label": "XC_BASIC",
+            "label": "EXOMIZER",
+            "type": "shell",
+            "command": "exomizer sfx basic monster_hunter.prg data/title_bitmap.prg data/title_screenram.prg data/title_colorram.prg data/charset.prg data/sprite_data.prg -o monster.prg -x 'inc $d020'",
+            "dependsOrder": "sequence",
+            "dependsOn": [
+                "XCBASIC"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": false
+            },
+            "options": {
+                "cwd": "${workspaceFolder}"
+            }
+        },
+        {
+            "label": "XCBASIC",
             "type": "shell",
             "osx": {
                 "command": "${config:xcbasic3.basefolder}/bin/macOS/xcbasic3",
