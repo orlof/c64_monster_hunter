@@ -4,10 +4,26 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "Build XC_BASIC file to .prg",
+            "label": "Exomizer",
+            "type": "shell",
+            "command": "util/exomizer.sh",
+            "dependsOrder": "sequence",
+            "dependsOn": [
+                "XC_BASIC"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "options": {
+                "cwd": "${workspaceFolder}"
+            }
+        },
+        {
+            "label": "XC_BASIC",
             "type": "shell",
             "osx": {
-                "command": "./bin/macOS/xcbasic3",
+                "command": "${config:xcbasic3.basefolder}/bin/macOS/xcbasic3",
                 "args": [
                     "-p=False",
                     "-k",
@@ -17,25 +33,24 @@
                 ]
             },
             "linux": {
-                "command": "./bin/Linux/xcbasic3",
+                "command": "${config:xcbasic3.basefolder}/bin/Linux/xcbasic3",
                 "args": [
+                    "-p=False",
+                    "-k",
+                    "--inline-data",
                     "${file}",
                     "${fileDirname}/${fileBasenameNoExtension}.prg"
                 ]
             },
             "windows": {
-                "command": "./bin/Windows/xcbasic3.exe",
+                "command": "${config:xcbasic3.basefolder}/bin/Windows/xcbasic3.exe",
                 "args": [
+                    "-p=False",
+                    "-k",
+                    "--inline-data",
                     "${file}",
                     "${fileDirname}\\${fileBasenameNoExtension}.prg"
                 ]
-            },
-            "group": {
-                "kind": "build",
-                "isDefault": true
-            },
-            "options": {
-                "cwd": "${config:xcbasic.basefolder}"
             }
         }
     ]
