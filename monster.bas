@@ -1,3 +1,10 @@
+FUNCTION AddBlood AS BYTE(bg AS BYTE) STATIC
+    IF (bg = 196) OR (bg = 212) THEN
+        RETURN bg
+    END IF
+    RETURN bg + 1
+END FUNCTION
+
 
 TYPE MONSTER
     Alive AS BYTE
@@ -13,10 +20,10 @@ TYPE MONSTER
     bg3 AS BYTE
 
     FUNCTION Collision AS BYTE() STATIC
-        IF PEEK(THIS.NextAddress) > 127 THEN RETURN TRUE
-        IF PEEK(THIS.NextAddress + 1) > 127 THEN RETURN TRUE
-        IF PEEK(THIS.NextAddress + 40) > 127 THEN RETURN TRUE
-        IF PEEK(THIS.NextAddress + 41) > 127 THEN RETURN TRUE
+        IF PEEK(THIS.NextAddress) < 192 THEN RETURN TRUE
+        IF PEEK(THIS.NextAddress + 1) < 192 THEN RETURN TRUE
+        IF PEEK(THIS.NextAddress + 40) < 192 THEN RETURN TRUE
+        IF PEEK(THIS.NextAddress + 41) < 192 THEN RETURN TRUE
         RETURN FALSE
     END FUNCTION
 
@@ -37,6 +44,13 @@ TYPE MONSTER
         POKE THIS.Address + 1, THIS.bg1
         POKE THIS.Address + 40, THIS.bg2
         POKE THIS.Address + 41, THIS.bg3
+    END SUB
+
+    SUB Explode() STATIC
+        POKE THIS.Address, AddBlood(THIS.bg0)
+        POKE THIS.Address + 1, AddBlood(THIS.bg1)
+        POKE THIS.Address + 40, AddBlood(THIS.bg2)
+        POKE THIS.Address + 41, AddBlood(THIS.bg3)
     END SUB
 
     SUB Init() STATIC
@@ -64,7 +78,7 @@ TYPE MONSTER
             END SELECT
 
             THIS.NextAddress = SCRMEM + THIS.x + THIS.y * 40
-        LOOP UNTIL THIS.Collision() = FALSE
+        LOOP WHILE THIS.Collision() = TRUE
 
         THIS.Address = THIS.NextAddress
         THIS.Alive = TRUE
@@ -83,7 +97,7 @@ TYPE MONSTER
 
     SUB Move() STATIC
         IF RNDB() >= MonsterSpeed THEN
-            RETURN
+            EXIT SUB
         END IF
 
         DIM dx AS INT

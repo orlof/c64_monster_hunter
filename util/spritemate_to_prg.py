@@ -1,6 +1,6 @@
 import json
 
-address = 0xd800
+address = 0xcc00
 
 def load_spritemate_file(filename):
     with open(filename, "r") as file:
@@ -26,7 +26,7 @@ def convert_to_bytes(bits_list):
     return bytes_list
 
 # Example usage
-filename = "data/mysprites.spm"  # Replace with your desired filename
+filename = "data/mysprites (1).spm"  # Replace with your desired filename
 loaded_data = load_spritemate_file(filename)
 
 all_bytes = []

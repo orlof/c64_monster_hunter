@@ -79,7 +79,6 @@
             "windows": {
                 "command": "${config:xcbasic3.basefolder}/bin/Windows/xcbasic3.exe",
                 "args": [
-                    "-p=False",
                     "-k",
                     "--inline-data",
                     "${file}",
