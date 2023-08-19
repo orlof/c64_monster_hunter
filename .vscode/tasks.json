@@ -5,9 +5,9 @@
     "tasks": [
         {
             "label": "VICE",
-            "type": "process",
+            "type": "shell",
             "osx": {
-                "command": "x64sc",
+                "command": "open",
                 "args": [
                     "monster.prg"
                 ]

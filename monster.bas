@@ -87,9 +87,10 @@ TYPE MONSTER
         END IF
 
         DIM dx AS INT
-        dx = SGN(SHR(PlayerX, 3) - THIS.x)
         DIM dy AS INT
-        dy = SGN(SHR(PlayerY, 3) - THIS.y)
+
+        dx = SGN(SHR(PlayerXi, 3) - THIS.x)
+        dy = SGN(SHR(PlayerYi, 3) - THIS.y)
 
         THIS.NextAddress = THIS.Address + 40 * dy + dx
         CALL THIS.Clear()

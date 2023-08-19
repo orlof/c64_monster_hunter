@@ -10,10 +10,19 @@ SHARED CONST SCRMEM = $c000
 SHARED CONST SPR_OFFSET_X = 12
 SHARED CONST SPR_OFFSET_Y = 10
 
-DIM SHARED PlayerX AS LONG
-PlayerX = 160
-DIM SHARED PlayerY AS LONG
-PlayerY = 80
+DIM SHARED PlayerX AS LONG @ _PlayerX
+DIM SHARED PlayerY AS LONG @ _PlayerY
+DIM SHARED PlayerXi AS INT @ _PlayerXi
+DIM SHARED PlayerYi AS INT @ _PlayerYi
+DIM HERO_FWD_X(16) AS LONG @ _HERO_FWD_X
+DIM HERO_FWD_Y(16) AS LONG @ _HERO_FWD_Y
+DIM HERO_BWD_X(16) AS LONG @ _HERO_BWD_X
+DIM HERO_BWD_Y(16) AS LONG @ _HERO_BWD_Y
+DIM BULLET_FWD_X(16) AS LONG @ _BULLET_FWD_X
+DIM BULLET_FWD_Y(16) AS LONG @ _BULLET_FWD_Y
+
+PlayerX = $00a000 ' 160
+PlayerY = $005000 ' 80
 
 DIM SHARED PlayerDirection AS BYTE
 PlayerDirection = 0
@@ -53,27 +62,37 @@ DIM ZP_W0 AS WORD FAST
 DECLARE FUNCTION ShowTitleBitmap AS BYTE () SHARED STATIC
 DECLARE FUNCTION ShowTitleAnimation AS BYTE () SHARED STATIC
 DECLARE SUB InitGraphics() SHARED STATIC
+DECLARE SUB InitGameScreen() SHARED STATIC
 DECLARE SUB PlaySID() SHARED STATIC
+DECLARE SUB StopSID() SHARED STATIC
 DECLARE SUB WaitRasterLine256() SHARED STATIC
 DECLARE SUB UpdateHero() SHARED STATIC
 DECLARE SUB ShowTitle() SHARED STATIC
+DECLARE SUB PlayGame() SHARED STATIC
+DECLARE SUB ShowGameScreen() SHARED STATIC
 
 RANDOMIZE TI()
 
 CALL InitGraphics()
 CALL ShowTitle()
+
+CALL PlayGame()
+
 END
+
+SUB PlayGame() SHARED STATIC
+    PlayerX = $00a000 ' 160
+    PlayerY = $005000 ' 80
+    PlayerDirection = 0
+
+    CALL ShowGameScreen()
+
+END SUB
+
 
 SUB ShowTitle() SHARED STATIC
     CALL PlaySID()
-
-    MEMSET $c000, 1000, 32
-    ' GRASS
-    FOR ZP_B0 = 0 TO 50
-        ZP_W0 = random16(0, 799)
-        POKE $c000 + ZP_W0, 64
-        'POKE $d800 + ZP_W0, 13
-    NEXT
+    CALL InitGameScreen()
 
     PlayerDirection = 0
 
@@ -82,15 +101,16 @@ SUB ShowTitle() SHARED STATIC
 
     DO
         IF mode = 0 THEN
-            _ = ShowTitleBitmap()
+            IF ShowTitleBitmap() = TRUE THEN EXIT DO
         ELSE
-            _ = ShowTitleAnimation()
+            IF ShowTitleAnimation() = TRUE THEN EXIT DO
         END IF
 
         mode = mode XOR 1
     LOOP
-END SUB
 
+    CALL StopSID()
+END SUB
 
 FUNCTION ShowTitleBitmap AS BYTE() SHARED STATIC
     BORDER COLOR_BLACK
@@ -110,22 +130,31 @@ FUNCTION ShowTitleBitmap AS BYTE() SHARED STATIC
         sta $d011
     END ASM
 
-    FOR t AS WORD = 0 TO 10000
+    FOR ZP_W0 = 0 TO 511
+        CALL WaitRasterLine256()
         CALL Joy2.Update()
         IF Joy2.ButtonOn() = TRUE THEN RETURN TRUE
-    NEXT t
+    NEXT
 
     RETURN FALSE
 END FUNCTION
 
-FUNCTION ShowTitleAnimation AS BYTE() SHARED STATIC
+SUB InitGameScreen() SHARED STATIC
+    MEMSET $c000, 1000, 32
+
+    ' GRASS
+    FOR ZP_B0 = 0 TO 50
+        ZP_W0 = random16(0, 799)
+        POKE $c000 + ZP_W0, 64
+        'POKE $d800 + ZP_W0, 13
+    NEXT
+END SUB
+
+SUB ShowGameScreen() SHARED STATIC
     BORDER COLOR_MIDDLEGRAY
     BACKGROUND COLOR_MIDDLEGRAY
-    MEMSET $d800, 1000, %1101
-
-    SPRITE 0 ON
-    SPRITE 1 ON
-    CALL UpdateHero()
+    MEMSET $d800, 800, %1101
+    MEMSET $db20, 200, 0
 
     ASM
         ; SCRMEM 0, FONTS 3
@@ -137,6 +166,14 @@ FUNCTION ShowTitleAnimation AS BYTE() SHARED STATIC
         and #%01011111
         sta $d011
     END ASM
+
+    SPRITE 0 ON
+    SPRITE 1 ON
+    CALL UpdateHero()
+END SUB
+
+FUNCTION ShowTitleAnimation AS BYTE() SHARED STATIC
+    CALL ShowGameScreen()
 
     ShowTitleAnimation = FALSE
 
@@ -153,8 +190,16 @@ FUNCTION ShowTitleAnimation AS BYTE() SHARED STATIC
         CALL Joy2.Update()
 
         PlayerDirection = PlayerDirection - Joy2.XAxis()
+        DIM Direction AS BYTE
         IF Joy2.North() = TRUE THEN
-            PlayerY = PlayerY
+            Direction = SHR(PlayerDirection, 4)
+            PlayerX = PlayerX + HERO_FWD_X(Direction)
+            PlayerY = PlayerY + HERO_FWD_Y(Direction)
+        END IF
+        IF Joy2.South() = TRUE THEN
+            Direction = SHR(PlayerDirection, 4)
+            PlayerX = PlayerX + HERO_BWD_X(Direction)
+            PlayerY = PlayerY + HERO_BWD_Y(Direction)
         END IF
         CALL UpdateHero()
 
@@ -221,6 +266,36 @@ IRQSidPlayer:
     RETURN
 END SUB
 
+SUB StopSID() SHARED STATIC
+    RASTER INTERRUPT OFF
+
+    ASM
+        ; Reset SID
+        lda #$ff
+stop_sid_loop:
+        ldx #$17
+stop_sid_0:
+        sta $d400,x
+        dex
+        bpl stop_sid_0
+        tax
+        bpl stop_sid_1
+        lda #$08
+        bpl stop_sid_loop
+stop_sid_1:
+stop_sid_2:
+        bit $d011
+        bpl stop_sid_2
+stop_sid_3:
+        bit $d011
+        bmi stop_sid_3
+        eor #$08
+        beq stop_sid_loop
+
+        lda #$0f
+        sta $d418
+    END ASM
+END SUB
 
 SUB WaitRasterLine256() SHARED STATIC
     ASM
@@ -290,77 +365,33 @@ INCBIN "data/bg_music.bin"
 
 ORIGIN $230a
 
-DIM CurrentMonster AS BYTE
-    CurrentMonster = 0
-
-GameLoop:
-    ' MOVE MONSTERS
-    CALL MONSTERS(CurrentMonster).Move()
-    CurrentMonster = CurrentMonster + 1
-    IF CurrentMonster > LAST_MONSTER THEN CurrentMonster = 0
-
-    ' WAIT
-    GOTO GameLoop
-
-    END
-
 _HERO_OFFSET_X:
     DATA AS INT 5, 6,  5,  3,  1, -2, -2, -3, -5, -5, -4, -3, -1, 1, 2, 3
 
 _HERO_OFFSET_Y:
     DATA AS INT 2, 0, -1, -3, -4, -4, -4, -2, -2,  1,  1,  4,  5, 5, 5, 3
 
+_PlayerX:
+    DATA AS BYTE 0
+_PlayerXi:
+    DATA AS BYTE 0, 0
+_PlayerY:
+    DATA AS BYTE 0
+_PlayerYi:
+    DATA AS BYTE 0, 0
+
 REM HERO FORWARD
-DATA AS INT 100, 0
-DATA AS INT 92, 38
-DATA AS INT 71, 71
-DATA AS INT 38, 92
-DATA AS INT 0, 100
-DATA AS INT -38, 92
-DATA AS INT -71, 71
-DATA AS INT -92, 38
-DATA AS INT -100, 0
-DATA AS INT -92, -38
-DATA AS INT -71, -71
-DATA AS INT -38, -92
-DATA AS INT 0, -100
-DATA AS INT 38, -92
-DATA AS INT 71, -71
-DATA AS INT 92, -38
-DATA AS INT 100, 0
+_HERO_FWD_X:
+    DATA AS LONG 100, 92, 71, 38, 0, -38, -71, -92, -100, -92, -71, -38, 0, 38, 71, 92, 100
+_HERO_FWD_Y:
+    DATA AS LONG 0, -38, -71, -92, -100, -92, -71, -38, 0, 38, 71, 92, 100, 92, 71, 38, 0
 REM HERO BACKWARD
-DATA AS INT 50, 0
-DATA AS INT 46, 19
-DATA AS INT 35, 35
-DATA AS INT 19, 46
-DATA AS INT 0, 50
-DATA AS INT -19, 46
-DATA AS INT -35, 35
-DATA AS INT -46, 19
-DATA AS INT -50, 0
-DATA AS INT -46, -19
-DATA AS INT -35, -35
-DATA AS INT -19, -46
-DATA AS INT 0, -50
-DATA AS INT 19, -46
-DATA AS INT 35, -35
-DATA AS INT 46, -19
-DATA AS INT 50, 0
+_HERO_BWD_X:
+    DATA AS LONG -50, -46, -35, -19, 0, 19, 35, 46, 50
+_HERO_BWD_Y:
+    DATA AS LONG 0, 19, 35, 46, 50, 46, 35, 19, 0
 REM BULLET FORWARD
-DATA AS INT 200, 0
-DATA AS INT 185, 77
-DATA AS INT 141, 141
-DATA AS INT 77, 185
-DATA AS INT 0, 200
-DATA AS INT -77, 185
-DATA AS INT -141, 141
-DATA AS INT -185, 77
-DATA AS INT -200, 0
-DATA AS INT -185, -77
-DATA AS INT -141, -141
-DATA AS INT -77, -185
-DATA AS INT 0, -200
-DATA AS INT 77, -185
-DATA AS INT 141, -141
-DATA AS INT 185, -77
-DATA AS INT 200, 0
+_BULLET_FWD_X:
+    DATA AS LONG 200, 185, 141, 77, 0, -77, -141, -185, -200, -185, -141, -77, 0, 77, 141, 185, 200
+_BULLET_FWD_Y:
+    DATA AS LONG 0, -77, -141, -185, -200, -185, -141, -77, 0, 77, 141, 185, 200, 185, 141, 77, 0
