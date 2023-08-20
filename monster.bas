@@ -27,6 +27,13 @@ TYPE MONSTER
         RETURN FALSE
     END FUNCTION
 
+    SUB ChangeCostume() STATIC
+        POKE THIS.Address, PEEK(THIS.Address) XOR 2
+        POKE THIS.Address+1, PEEK(THIS.Address+1) XOR 2
+        POKE THIS.Address+40, PEEK(THIS.Address+40) XOR 2
+        POKE THIS.Address+41, PEEK(THIS.Address+41) XOR 2
+    END SUB
+
     SUB Draw() STATIC
         THIS.bg0 = PEEK(THIS.Address)
         THIS.bg1 = PEEK(THIS.Address + 1)

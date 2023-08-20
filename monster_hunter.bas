@@ -208,6 +208,10 @@ SUB MoveMonsters() SHARED STATIC
     ELSE
         CALL MONSTERS(ZP_B0).Move()
     END IF
+    ZP_B0 = (ZP_B0 + 8) AND $f
+    IF MONSTERS(ZP_B0).Alive THEN
+        CALL MONSTERS(ZP_B0).ChangeCostume()
+    END IF
 END SUB
 
 SUB MoveHeroHuman() SHARED STATIC
