@@ -5,10 +5,20 @@ INCLUDE "ext/lib_color.bas"
 INCLUDE "ext/lib_joy.bas"
 INCLUDE "ext/lib_random.bas"
 
+' DIFFICULTY LEVEL
+' TotalMonsters
+' MonsterSpeed
+' RespawnDelay
+
 SHARED CONST LAST_MONSTER = 15
 SHARED CONST SCRMEM = $c000
 SHARED CONST SPR_OFFSET_X = 12
 SHARED CONST SPR_OFFSET_Y = 10
+SHARED CONST MODE_PLAY = 0
+SHARED CONST MODE_GAME_OVER = 1
+
+SHARED CONST TILE_EMPTY = 80
+SHARED CONST TILE_BUSH  = 64
 
 DIM SHARED PlayerX AS LONG @ _PlayerX
 DIM SHARED PlayerY AS LONG @ _PlayerY
@@ -33,7 +43,11 @@ DIM BULLET_FWD_Y(16) AS LONG @ _BULLET_FWD_Y
 PlayerDirection = 0
 
 DIM SHARED MonsterSpeed AS BYTE
-MonsterSpeed = 16
+MonsterSpeed = 32
+DIM SHARED GameMode AS BYTE
+DIM SHARED RespawnDelay AS BYTE
+RespawnDelay = 32
+DIM SHARED RespawnTimer AS BYTE
 
 INCLUDE "monster.bas"
 
@@ -43,12 +57,12 @@ DIM HERO_OFFSET_Y(16) AS INT @ _HERO_OFFSET_Y
 DIM SHARED MONSTERS(16) AS MONSTER
 
 DIM ZP_B0 AS BYTE FAST
-DIM ZP_W0 AS WORD FAST
+DIM TickCounter AS BYTE FAST
 
 DECLARE FUNCTION ShowTitleBitmap AS BYTE () SHARED STATIC
 DECLARE FUNCTION ShowTitleAnimation AS BYTE () SHARED STATIC
 DECLARE SUB InitGraphics() SHARED STATIC
-DECLARE SUB InitGameScreen() SHARED STATIC
+DECLARE SUB InitGame() SHARED STATIC
 DECLARE SUB PlaySID() SHARED STATIC
 DECLARE SUB StopSID() SHARED STATIC
 DECLARE SUB WaitRasterLine256() SHARED STATIC
@@ -62,46 +76,62 @@ DECLARE SUB MoveHeroDemo() SHARED STATIC
 DECLARE SUB Shoot() SHARED STATIC
 DECLARE SUB MoveBullet() SHARED STATIC
 DECLARE SUB UpdateBullet() SHARED STATIC
+DECLARE SUB CheckBulletCollision() SHARED STATIC
+DECLARE SUB CheckHeroCollision() SHARED STATIC
 
 RANDOMIZE TI()
 
 CALL InitGraphics()
-CALL ShowTitle()
 
-CALL PlayGame()
-
-END
+DO
+    CALL ShowTitle()
+    CALL PlayGame()
+LOOP
 
 SUB PlayGame() SHARED STATIC
-    CALL InitGameScreen()
+    CALL InitGame()
     CALL ShowGameScreen()
 
+    GameMode = MODE_PLAY
     DO
         CALL WaitRasterLine256()
 
         CALL MoveMonsters()
         CALL MoveHeroHuman()
         CALL UpdateHero()
-    LOOP
+        CALL CheckHeroCollision()
+
+        IF BulletAlive THEN
+            CALL MoveBullet()
+            IF BulletAlive THEN
+                CALL UpdateBullet()
+                CALL CheckBulletCollision()
+            END IF
+        END IF
+        TickCounter = TickCounter + 1
+    LOOP UNTIL GameMode = MODE_GAME_OVER
+
+    BulletAlive = FALSE
+    SPRITE 0 OFF
+    SPRITE 1 OFF
+    SPRITE 2 OFF
+
 END SUB
 
-DIM GameScreen AS BYTE
-
-
 SUB ShowTitle() SHARED STATIC
-    GameScreen = FALSE
-
     CALL PlaySID()
-    CALL InitGameScreen()
+    CALL InitGame()
 
+    DIM TitleScene AS BYTE
+    TitleScene = 0
     DO
-        IF GameScreen = FALSE THEN
-            IF ShowTitleBitmap() = TRUE THEN EXIT DO
+        IF TitleScene = 0 THEN
+            IF ShowTitleBitmap() THEN EXIT DO
         ELSE
-            IF ShowTitleAnimation() = TRUE THEN EXIT DO
+            IF ShowTitleAnimation() THEN EXIT DO
         END IF
 
-        GameScreen = GameScreen XOR $ff
+        TitleScene = TitleScene XOR 1
     LOOP
 
     CALL StopSID()
@@ -125,7 +155,7 @@ FUNCTION ShowTitleBitmap AS BYTE() SHARED STATIC
         sta $d011
     END ASM
 
-    FOR ZP_W0 = 0 TO 255
+    FOR T AS BYTE = 0 TO 255
         CALL WaitRasterLine256()
         CALL Joy2.Update()
         IF Joy2.ButtonOn() = TRUE THEN RETURN TRUE
@@ -134,18 +164,23 @@ FUNCTION ShowTitleBitmap AS BYTE() SHARED STATIC
     RETURN FALSE
 END FUNCTION
 
-SUB InitGameScreen() SHARED STATIC
+SUB InitGame() SHARED STATIC
+    FOR ZP_B0 = 0 TO LAST_MONSTER
+        MONSTERS(ZP_B0).Alive = FALSE
+    NEXT
+
     PlayerX = $00a000 ' 160
     PlayerY = $005000 ' 80
     PlayerDirection = 0
     BulletAlive = FALSE
+    RespawnTimer = 0
 
-    MEMSET $c000, 1000, 208
+    MEMSET $c000, 960, TILE_EMPTY
+    MEMSET $c3c0, 40, 32
 
     ' GRASS
     FOR ZP_B0 = 0 TO 50
-        ZP_W0 = random16(0, 799)
-        POKE $c000 + ZP_W0, 192
+        POKE $c000 + random16(0, 959), TILE_BUSH
         'POKE $d800 + ZP_W0, 13
     NEXT
 END SUB
@@ -161,7 +196,7 @@ END SUB
 SUB MoveBullet() SHARED STATIC
     BulletX = BulletX + BULLET_FWD_X(BulletDirection)
     BulletY = BulletY + BULLET_FWD_Y(BulletDirection)
-    IF BulletXi < 0 OR BulletXi > 319 OR BulletYi < 0 OR BulletYi > 159 THEN
+    IF BulletXi < 0 OR BulletXi > 319 OR BulletYi < 0 OR BulletYi > 191 THEN
         BulletAlive = FALSE
         SPRITE 2 OFF
     END IF
@@ -180,8 +215,8 @@ SUB ShowGameScreen() SHARED STATIC
     BORDER COLOR_MIDDLEGRAY
     BACKGROUND COLOR_MIDDLEGRAY
 
-    MEMSET $d800, 800, %1101
-    MEMSET $db20, 200, 0
+    MEMSET $d800, 960, MCOLOR_GREEN
+    MEMSET $dbc0, 40, COLOR_BLACK
 
     ASM
         ; SCRMEM 0, FONTS 3
@@ -202,32 +237,56 @@ SUB ShowGameScreen() SHARED STATIC
 END SUB
 
 SUB MoveMonsters() SHARED STATIC
-    ZP_B0 = ZP_W0 AND $f
-    IF MONSTERS(ZP_B0).Alive = FALSE THEN
-        CALL MONSTERS(ZP_B0).Init()
+    DIM MonsterIndex AS BYTE
+    MonsterIndex = TickCounter AND $f
+
+    IF MONSTERS(MonsterIndex).Alive THEN
+        CALL MONSTERS(MonsterIndex).Move()
     ELSE
-        CALL MONSTERS(ZP_B0).Move()
+        IF RespawnTimer = 0 THEN
+            CALL MONSTERS(MonsterIndex).Init()
+            RespawnTimer = RespawnDelay
+        END IF
     END IF
-    ZP_B0 = (ZP_B0 + 8) AND $f
-    IF MONSTERS(ZP_B0).Alive THEN
-        CALL MONSTERS(ZP_B0).ChangeCostume()
+
+    IF RespawnTimer > 0 THEN RespawnTimer = RespawnTimer - 1
+
+    ' ANIMATE MONSTER
+    MonsterIndex = (MonsterIndex XOR 8)
+    IF MONSTERS(MonsterIndex).Alive THEN
+        MonsterAddress = MONSTERS(MonsterIndex).Address
+        CALL ChangeCostume()
     END IF
 END SUB
 
 SUB MoveHeroHuman() SHARED STATIC
     CALL Joy2.Update()
 
-    PlayerDirection = PlayerDirection - Joy2.XAxis()
+    PlayerDirection = PlayerDirection - SHL(Joy2.XAxis(), 1)
     DIM Direction AS BYTE
-    IF Joy2.North() = TRUE THEN
+    IF Joy2.North() THEN
         Direction = SHR(PlayerDirection, 4)
         PlayerX = PlayerX + HERO_FWD_X(Direction)
+        IF PlayerX < 0 THEN PlayerX = 0
+        IF PlayerX > $013f00 THEN PlayerX = $013f00
         PlayerY = PlayerY + HERO_FWD_Y(Direction)
+        IF PlayerY < 0 THEN PlayerY = 0
+        IF PlayerY > $00b700 THEN PlayerY = $00b700
+    ELSE
+        IF Joy2.South() THEN
+            Direction = SHR(PlayerDirection, 4)
+            PlayerX = PlayerX + HERO_BWD_X(Direction)
+            IF PlayerX < 0 THEN PlayerX = 0
+            IF PlayerX > $013f00 THEN PlayerX = $013f00
+            PlayerY = PlayerY + HERO_BWD_Y(Direction)
+            IF PlayerY < 0 THEN PlayerY = 0
+            IF PlayerY > $00b700 THEN PlayerY = $00b700
+        END IF
     END IF
-    IF Joy2.South() = TRUE THEN
-        Direction = SHR(PlayerDirection, 4)
-        PlayerX = PlayerX + HERO_BWD_X(Direction)
-        PlayerY = PlayerY + HERO_BWD_Y(Direction)
+    IF Joy2.Button() THEN
+        IF BulletAlive = FALSE THEN
+            CALL Shoot()
+        END IF
     END IF
 END SUB
 
@@ -239,15 +298,23 @@ SUB CheckBulletCollision() SHARED STATIC
     IF (Icon > 127) AND (Icon < 192) THEN
         FOR ZP_B0 = 0 TO 15
             IF MONSTERS(ZP_B0).Alive = FALSE THEN CONTINUE FOR
-            DIM MonsterAddress AS WORD
             MonsterAddress = MONSTERS(ZP_B0).Address
             IF (MonsterAddress = Address) OR ((MonsterAddress+1) = Address) _
                 OR ((MonsterAddress+40) = Address) OR ((MonsterAddress+41) = Address) THEN
-                    MONSTERS(ZP_B0).Alive = FALSE
                     CALL MONSTERS(ZP_B0).Explode()
                     EXIT SUB
             END IF
         NEXT
+    END IF
+END SUB
+
+SUB CheckHeroCollision() SHARED STATIC
+    DIM Icon AS BYTE
+    DIM Address AS WORD
+    Address = $c000 + CWORD(40 * SHR(PlayerYi, 3) + SHR(PlayerXi, 3))
+    Icon = PEEK(Address)
+    IF (Icon > 127) AND (Icon < 192) THEN
+        GameMode = MODE_GAME_OVER
     END IF
 END SUB
 
@@ -256,7 +323,7 @@ FUNCTION ShowTitleAnimation AS BYTE() SHARED STATIC
 
     ShowTitleAnimation = FALSE
 
-    FOR ZP_W0 = 0 TO 511
+    FOR TickCounter = 0 TO 255
         CALL WaitRasterLine256()
 
         CALL MoveMonsters()
@@ -271,6 +338,7 @@ FUNCTION ShowTitleAnimation AS BYTE() SHARED STATIC
             END IF
         END IF
 
+        CALL Joy2.Update()
         IF Joy2.ButtonOn() = TRUE THEN
             ShowTitleAnimation = TRUE
             EXIT FOR
@@ -509,16 +577,16 @@ _BulletYi:
 
 REM HERO FORWARD
 _HERO_FWD_X:
-    DATA AS LONG 100, 92, 71, 38, 0, -38, -71, -92, -100, -92, -71, -38, 0, 38, 71, 92, 100
+    DATA AS LONG 100, 92, 71, 38, 0, -38, -71, -92, -100, -92, -71, -38, 0, 38, 71, 92
 _HERO_FWD_Y:
-    DATA AS LONG 0, -38, -71, -92, -100, -92, -71, -38, 0, 38, 71, 92, 100, 92, 71, 38, 0
+    DATA AS LONG 0, -38, -71, -92, -100, -92, -71, -38, 0, 38, 71, 92, 100, 92, 71, 38
 REM HERO BACKWARD
 _HERO_BWD_X:
-    DATA AS LONG -50, -46, -35, -19, 0, 19, 35, 46, 50
+    DATA AS LONG -50, -46, -35, -19, 0, 19, 35, 46, 50, 46, 35, 19, 0, -19, -35, -46
 _HERO_BWD_Y:
-    DATA AS LONG 0, 19, 35, 46, 50, 46, 35, 19, 0
+    DATA AS LONG 0, 19, 35, 46, 50, 46, 35, 19, 0, -19, -35, -46, -50, -46, -35, -19
 REM BULLET FORWARD
 _BULLET_FWD_X:
-    DATA AS LONG 200, 185, 141, 77, 0, -77, -141, -185, -200, -185, -141, -77, 0, 77, 141, 185, 200
+    DATA AS LONG 512, 473, 362, 196, 0, -196, -362, -473, -512, -473, -362, -196, 0, 196, 362, 473
 _BULLET_FWD_Y:
-    DATA AS LONG 0, -77, -141, -185, -200, -185, -141, -77, 0, 77, 141, 185, 200, 185, 141, 77, 0
+    DATA AS LONG 0, -196, -362, -473, -512, -473, -362, -196, 0, 196, 362, 473, 512, 473, 362, 196

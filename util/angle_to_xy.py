@@ -6,18 +6,18 @@ def calculate_coordinates(angle_degrees, distance):
     y = distance * math.sin(angle_radians)
     return x, y
 
-def print_table(distance, title, start_angle=0.0):
+def print_table(distance, title, angle=0.0):
     step = 22.5
-    angle = start_angle
+    cur_angle = 0.0
     xs = []
     ys = []
-    while angle <= 360.0:
-        x, y = calculate_coordinates(-angle, distance)  # Using distance 100
+    while cur_angle < 360.0:
+        x, y = calculate_coordinates(-(angle + cur_angle), distance)  # Using distance 100
         x_rounded = round(x)
         y_rounded = round(y)
         xs.append(x_rounded)
         ys.append(y_rounded)
-        angle += step
+        cur_angle += step
     print(f"_{title}_X:")
     print("    DATA AS LONG %s" % ", ".join([str(x) for x in xs]))
     print(f"_{title}_Y:")
@@ -28,5 +28,5 @@ print_table(100, "HERO_FWD")
 print("REM HERO BACKWARD")
 print_table(50, "HERO_BWD", 180)
 print("REM BULLET FORWARD")
-print_table(200, "BULLET_FWD")
+print_table(512, "BULLET_FWD")
 

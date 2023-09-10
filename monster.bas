@@ -1,10 +1,73 @@
+DIM SHARED MonsterAddress AS WORD FAST
+
+SUB ChangeCostume() STATIC SHARED
+    ASM
+        ldy #0
+        lda ({MonsterAddress}),y
+        eor #2
+        sta ({MonsterAddress}),y
+        iny
+        lda ({MonsterAddress}),y
+        eor #2
+        sta ({MonsterAddress}),y
+        ldy #40
+        lda ({MonsterAddress}),y
+        eor #2
+        sta ({MonsterAddress}),y
+        iny
+        lda ({MonsterAddress}),y
+        eor #2
+        sta ({MonsterAddress}),y
+    END ASM
+END SUB
+
 FUNCTION AddBlood AS BYTE(bg AS BYTE) STATIC
-    IF (bg = 196) OR (bg = 212) THEN
-        RETURN bg
-    END IF
-    RETURN bg + 1
+    ASM
+        ldy {bg}
+        tya
+        and #%11
+        cmp #%11
+        beq NoMoreBlood
+        iny
+NoMoreBlood:
+        sty {AddBlood}
+    END ASM
 END FUNCTION
 
+FUNCTION Collision AS BYTE() STATIC
+    ASM
+        ldy #0
+        lda ({MonsterAddress}),y
+        cmp #128
+        bcc NoCollision0
+        jmp Collision0
+NoCollision0:
+        iny
+        lda ({MonsterAddress}),y
+        cmp #128
+        bcc NoCollision1
+        jmp Collision0
+NoCollision1:
+        ldy #40
+        lda ({MonsterAddress}),y
+        cmp #128
+        bcc NoCollision2
+        jmp Collision0
+NoCollision2:
+        iny
+        lda ({MonsterAddress}),y
+        cmp #128
+        bcc NoCollision3
+
+Collision0:
+        lda #$ff          ; Collision
+        .byte $2c
+NoCollision3:
+        lda #00
+
+        sta {Collision}
+    END ASM
+END FUNCTION
 
 TYPE MONSTER
     Alive AS BYTE
@@ -12,27 +75,11 @@ TYPE MONSTER
     y AS INT
 
     Address AS WORD
-    NextAddress AS WORD
 
     bg0 AS BYTE
     bg1 AS BYTE
     bg2 AS BYTE
     bg3 AS BYTE
-
-    FUNCTION Collision AS BYTE() STATIC
-        IF PEEK(THIS.NextAddress) < 192 THEN RETURN TRUE
-        IF PEEK(THIS.NextAddress + 1) < 192 THEN RETURN TRUE
-        IF PEEK(THIS.NextAddress + 40) < 192 THEN RETURN TRUE
-        IF PEEK(THIS.NextAddress + 41) < 192 THEN RETURN TRUE
-        RETURN FALSE
-    END FUNCTION
-
-    SUB ChangeCostume() STATIC
-        POKE THIS.Address, PEEK(THIS.Address) XOR 2
-        POKE THIS.Address+1, PEEK(THIS.Address+1) XOR 2
-        POKE THIS.Address+40, PEEK(THIS.Address+40) XOR 2
-        POKE THIS.Address+41, PEEK(THIS.Address+41) XOR 2
-    END SUB
 
     SUB Draw() STATIC
         THIS.bg0 = PEEK(THIS.Address)
@@ -58,6 +105,8 @@ TYPE MONSTER
         POKE THIS.Address + 1, AddBlood(THIS.bg1)
         POKE THIS.Address + 40, AddBlood(THIS.bg2)
         POKE THIS.Address + 41, AddBlood(THIS.bg3)
+
+        THIS.Alive = FALSE
     END SUB
 
     SUB Init() STATIC
@@ -73,21 +122,21 @@ TYPE MONSTER
                 CASE 1
                     ' LEFT
                     THIS.x = 0
-                    THIS.y = random(0, 18)
+                    THIS.y = random(0, 22)
                 CASE 2
                     ' BOTTOM
                     THIS.x = random(0, 38)
-                    THIS.y = 18
+                    THIS.y = 22
                 CASE 3
                     ' RIGHT
                     THIS.x = 38
-                    THIS.y = random(0, 18)
+                    THIS.y = random(0, 22)
             END SELECT
 
-            THIS.NextAddress = SCRMEM + THIS.x + THIS.y * 40
-        LOOP WHILE THIS.Collision() = TRUE
+            MonsterAddress = SCRMEM + THIS.x + THIS.y * 40
+        LOOP WHILE Collision()
 
-        THIS.Address = THIS.NextAddress
+        THIS.Address = MonsterAddress
         THIS.Alive = TRUE
 
         CALL THIS.Draw()
@@ -98,7 +147,7 @@ TYPE MONSTER
         THIS.y = THIS.y + dy
 
         'CALL THIS.Clear()
-        THIS.Address = THIS.NextAddress
+        THIS.Address = MonsterAddress
         CALL THIS.Draw()
     END SUB
 
@@ -113,24 +162,24 @@ TYPE MONSTER
         dx = SGN(SHR(PlayerXi, 3) - THIS.x)
         dy = SGN(SHR(PlayerYi, 3) - THIS.y)
 
-        THIS.NextAddress = THIS.Address + 40 * dy + dx
+        MonsterAddress = THIS.Address + 40 * dy + dx
         CALL THIS.Clear()
 
-        IF THIS.Collision() = FALSE THEN
-            CALL THIS.Update(dx, dy)
-        ELSE
-            THIS.NextAddress = THIS.Address + dx
-            IF THIS.Collision() = FALSE THEN
-                CALL THIS.Update(dx, 0)
-            ELSE
-                THIS.NextAddress = THIS.Address + 40 * dy
-                IF THIS.Collision() = FALSE THEN
-                    CALL THIS.Update(0, dy)
-                ELSE
-                    THIS.NextAddress = THIS.Address
+        IF Collision() THEN
+            MonsterAddress = THIS.Address + dx
+            IF Collision() THEN
+                MonsterAddress = THIS.Address + 40 * dy
+                IF Collision() THEN
+                    MonsterAddress = THIS.Address
                     CALL THIS.Update(0, 0)
+                ELSE
+                    CALL THIS.Update(0, dy)
                 END IF
+            ELSE
+                CALL THIS.Update(dx, 0)
             END IF
+        ELSE
+            CALL THIS.Update(dx, dy)
         END IF
     END SUB
 END TYPE
